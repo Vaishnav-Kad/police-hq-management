@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api/axios';
 import NewCriminalModal from '../components/criminals/NewCriminalModal';
 import EditCriminalModal from '../components/criminals/EditCriminalModal';
@@ -75,6 +76,7 @@ const INITIAL_CRIMINALS = [
 
 export default function CriminalsPage() {
   const { user, stationFilter } = useAuth();
+  const { lastSyncEvent } = useSocket();
   const [criminals, setCriminals] = useState(INITIAL_CRIMINALS);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,30 +87,34 @@ export default function CriminalsPage() {
   // Authorized roles for registering suspects: System-Admin, Head-Officer, Officer
   const canAddCriminal = user?.role === 'System-Admin' || user?.role === 'Head-Officer' || user?.role === 'Officer';
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchCriminals() {
-      setLoading(true);
-      try {
-        const queryParam = stationFilter !== 'all' ? `?station_id=${stationFilter}` : '';
-        const res = await api.get(`/criminals${queryParam}`);
-        if (isMounted && res.success && res.data) {
-          setCriminals(res.data);
-        }
-      } catch (_) {
-        if (isMounted) {
-          const filtered = stationFilter === 'all'
-            ? INITIAL_CRIMINALS
-            : INITIAL_CRIMINALS.filter((c) => String(c.station_id) === String(stationFilter));
-          setCriminals(filtered);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
+  const fetchCriminals = useCallback(async () => {
+    setLoading(true);
+    try {
+      const queryParam = stationFilter !== 'all' ? `?station_id=${stationFilter}` : '';
+      const res = await api.get(`/criminals${queryParam}`);
+      if (res.success && res.data) {
+        setCriminals(res.data);
       }
+    } catch (_) {
+      const filtered = stationFilter === 'all'
+        ? INITIAL_CRIMINALS
+        : INITIAL_CRIMINALS.filter((c) => String(c.station_id) === String(stationFilter));
+      setCriminals(filtered);
+    } finally {
+      setLoading(false);
     }
-    fetchCriminals();
-    return () => { isMounted = false; };
   }, [stationFilter]);
+
+  useEffect(() => {
+    fetchCriminals();
+  }, [fetchCriminals]);
+
+  // Real-time synchronization when any user registers, updates, or deactivates a criminal dossier
+  useEffect(() => {
+    if (lastSyncEvent && lastSyncEvent.entity === 'criminals') {
+      fetchCriminals();
+    }
+  }, [lastSyncEvent, fetchCriminals]);
 
   const handleCriminalCreated = (newCriminal) => {
     setCriminals((prev) => [

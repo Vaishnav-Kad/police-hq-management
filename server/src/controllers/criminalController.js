@@ -1,5 +1,6 @@
 import * as criminalService from '../services/criminalService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import { broadcastSync } from '../utils/socketNotifier.js';
 
 export async function getAllCriminals(req, res, next) {
   try {
@@ -64,6 +65,7 @@ export async function createCriminal(req, res, next) {
       fingerprint_id,
       known_territory,
     });
+    broadcastSync(req, { entity: 'criminals', action: 'CREATE', data: criminal });
     return successResponse(res, criminal, 'Criminal record created successfully', 201);
   } catch (err) {
     next(err);
@@ -73,6 +75,7 @@ export async function createCriminal(req, res, next) {
 export async function updateCriminal(req, res, next) {
   try {
     const updated = await criminalService.updateCriminal(req.params.id, req.body);
+    broadcastSync(req, { entity: 'criminals', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'Criminal record updated successfully');
   } catch (err) {
     next(err);
@@ -87,6 +90,7 @@ export async function uploadMugshot(req, res, next) {
     // Relative path for static serving
     const relativePath = `/police_storage/mugshots/${req.file.filename}`;
     const updated = await criminalService.updateMugshot(req.params.id, relativePath);
+    broadcastSync(req, { entity: 'criminals', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'Mugshot uploaded and updated successfully');
   } catch (err) {
     next(err);
@@ -96,6 +100,7 @@ export async function uploadMugshot(req, res, next) {
 export async function deleteCriminal(req, res, next) {
   try {
     const result = await criminalService.deleteCriminal(req.params.id, req.user);
+    broadcastSync(req, { entity: 'criminals', action: 'DELETE', data: { id: req.params.id } });
     return successResponse(res, result, 'Criminal record deactivated successfully');
   } catch (err) {
     next(err);

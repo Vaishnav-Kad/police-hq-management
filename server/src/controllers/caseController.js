@@ -1,5 +1,6 @@
 import * as caseService from '../services/caseService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import { broadcastSync } from '../utils/socketNotifier.js';
 
 export async function getAllCases(req, res, next) {
   try {
@@ -35,6 +36,7 @@ export async function updateCaseStatus(req, res, next) {
       return errorResponse(res, 'New status is required.', 400);
     }
     const updated = await caseService.updateCaseStatus(req.params.id, status, req.user.id);
+    broadcastSync(req, { entity: 'cases', action: 'STATUS_UPDATE', data: updated });
     return successResponse(res, updated, `Case status transitioned to '${status}' successfully`);
   } catch (err) {
     next(err);
@@ -48,6 +50,7 @@ export async function assignInvestigator(req, res, next) {
       return errorResponse(res, 'assigned_officer_id is required.', 400);
     }
     const updated = await caseService.assignInvestigator(req.params.id, parseInt(assigned_officer_id, 10), req.user);
+    broadcastSync(req, { entity: 'cases', action: 'INVESTIGATOR_ASSIGNED', data: updated });
     return successResponse(res, updated, 'Investigator assigned to case successfully');
   } catch (err) {
     next(err);

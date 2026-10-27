@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api/axios';
 import KanbanBoard from '../components/cases/KanbanBoard';
 import CaseDetailModal from '../components/cases/CaseDetailModal';
@@ -88,6 +89,7 @@ const INITIAL_FALLBACK_CASES = [
 
 export default function CasesPage() {
   const { user, stationFilter } = useAuth();
+  const { lastSyncEvent } = useSocket();
   const [cases, setCases] = useState(INITIAL_FALLBACK_CASES);
   const [selectedCase, setSelectedCase] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -114,6 +116,13 @@ export default function CasesPage() {
   useEffect(() => {
     fetchCases();
   }, [stationFilter]);
+
+  // Listen to real-time socket events so Kanban board auto-refreshes across users
+  useEffect(() => {
+    if (lastSyncEvent && ['cases', 'firs'].includes(lastSyncEvent.entity)) {
+      fetchCases();
+    }
+  }, [lastSyncEvent]);
 
   // Listen to global FIR creation events so Kanban board auto-refreshes new cases
   useEffect(() => {

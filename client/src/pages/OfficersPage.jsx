@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api/axios';
 import NewOfficerModal from '../components/officers/NewOfficerModal';
 import EditOfficerModal from '../components/officers/EditOfficerModal';
@@ -35,6 +36,7 @@ export default function OfficersPage() {
     addOfficerToState,
     fetchOfficers: refreshGlobalOfficers,
   } = useAuth();
+  const { lastSyncEvent } = useSocket();
 
   const [officers, setOfficers] = useState(globalOfficers);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,6 +82,14 @@ export default function OfficersPage() {
   useEffect(() => {
     fetchLiveOfficers();
   }, [selectedStation, user?.id]);
+
+  // Real-time synchronization when any officer account is created, updated, or decommissioned
+  useEffect(() => {
+    if (lastSyncEvent && lastSyncEvent.entity === 'officers') {
+      fetchLiveOfficers();
+      if (refreshGlobalOfficers) refreshGlobalOfficers();
+    }
+  }, [lastSyncEvent]);
 
   const handleOfficerCreated = (newOfficer) => {
     // Reset filters to 'all' so that the newly commissioned officer is immediately visible in the active view

@@ -1,5 +1,6 @@
 import * as legalService from '../services/legalService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import { broadcastSync } from '../utils/socketNotifier.js';
 
 // ==============================================================================
 // 1. COURT DATES CONTROLLERS
@@ -50,6 +51,7 @@ export async function createCourtDate(req, res, next) {
       },
       req.user
     );
+    broadcastSync(req, { entity: 'court_dates', action: 'CREATE', data: result });
     return successResponse(res, result, 'Court hearing scheduled successfully', 201);
   } catch (err) {
     next(err);
@@ -66,6 +68,7 @@ export async function updateCourtDate(req, res, next) {
       decision,
       notes,
     });
+    broadcastSync(req, { entity: 'court_dates', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'Court hearing updated successfully');
   } catch (err) {
     next(err);
@@ -75,6 +78,7 @@ export async function updateCourtDate(req, res, next) {
 export async function deleteCourtDate(req, res, next) {
   try {
     const result = await legalService.deleteCourtDate(req.params.id, req.user);
+    broadcastSync(req, { entity: 'court_dates', action: 'DELETE', data: { id: req.params.id } });
     return successResponse(res, result, 'Court hearing cancelled successfully');
   } catch (err) {
     next(err);
@@ -146,6 +150,7 @@ export async function createWarrant(req, res, next) {
       executing_officer_id: executing_officer_id ? parseInt(executing_officer_id, 10) : req.user?.id,
       execution_notes,
     });
+    broadcastSync(req, { entity: 'warrants', action: 'CREATE', data: warrant });
     return successResponse(res, warrant, 'Judicial warrant registered successfully', 201);
   } catch (err) {
     next(err);
@@ -159,6 +164,7 @@ export async function updateWarrantStatus(req, res, next) {
       return errorResponse(res, 'New status is required.', 400);
     }
     const updated = await legalService.updateWarrantStatus(req.params.id, { status, execution_date }, req.user);
+    broadcastSync(req, { entity: 'warrants', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'Warrant status updated successfully');
   } catch (err) {
     next(err);
@@ -168,6 +174,7 @@ export async function updateWarrantStatus(req, res, next) {
 export async function deleteWarrant(req, res, next) {
   try {
     const result = await legalService.deleteWarrant(req.params.id, req.user);
+    broadcastSync(req, { entity: 'warrants', action: 'DELETE', data: { id: req.params.id } });
     return successResponse(res, result, 'Warrant removed successfully');
   } catch (err) {
     next(err);
@@ -320,6 +327,7 @@ export async function createArrest(req, res, next) {
       relative_intimated,
       property_seized_inventory,
     });
+    broadcastSync(req, { entity: 'arrests', action: 'CREATE', data: arrest });
     return successResponse(res, arrest, 'Suspect booked into precinct custody successfully', 201);
   } catch (err) {
     next(err);
@@ -329,6 +337,7 @@ export async function createArrest(req, res, next) {
 export async function updateArrest(req, res, next) {
   try {
     const updated = await legalService.updateArrest(req.params.id, req.body, req.user);
+    broadcastSync(req, { entity: 'arrests', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'Lockup custody record updated successfully');
   } catch (err) {
     next(err);
@@ -346,6 +355,7 @@ export async function updateBailStatus(req, res, next) {
       bail_amount,
       release_timestamp,
     }, req.user);
+    broadcastSync(req, { entity: 'arrests', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'Bail and lockup custody status updated successfully');
   } catch (err) {
     next(err);
@@ -355,6 +365,7 @@ export async function updateBailStatus(req, res, next) {
 export async function deleteArrest(req, res, next) {
   try {
     const result = await legalService.deleteArrest(req.params.id, req.user);
+    broadcastSync(req, { entity: 'arrests', action: 'DELETE', data: { id: req.params.id } });
     return successResponse(res, result, 'Detainee custody record removed successfully');
   } catch (err) {
     next(err);

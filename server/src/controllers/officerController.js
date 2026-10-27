@@ -1,5 +1,6 @@
 import * as officerService from '../services/officerService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import { broadcastSync } from '../utils/socketNotifier.js';
 
 export async function getAllOfficers(req, res, next) {
   try {
@@ -63,6 +64,7 @@ export async function createOfficer(req, res, next) {
       createdByOfficerId: req.user?.id || null,
       requestingUser: req.user,
     });
+    broadcastSync(req, { entity: 'officers', action: 'CREATE', data: officer });
     return successResponse(res, officer, 'Officer registered successfully', 201);
   } catch (err) {
     next(err);
@@ -103,6 +105,7 @@ export async function updateOfficer(req, res, next) {
       },
       req.user
     );
+    broadcastSync(req, { entity: 'officers', action: 'UPDATE', data: officer });
     return successResponse(res, officer, 'Officer profile updated successfully');
   } catch (err) {
     next(err);
@@ -112,6 +115,7 @@ export async function updateOfficer(req, res, next) {
 export async function deleteOfficer(req, res, next) {
   try {
     const result = await officerService.deleteOfficer(req.params.id, req.user);
+    broadcastSync(req, { entity: 'officers', action: 'DELETE', data: { id: req.params.id } });
     return successResponse(res, result, 'Officer account decommissioned successfully');
   } catch (err) {
     next(err);

@@ -15,6 +15,7 @@ export function SocketProvider({ children }) {
     created_at: new Date().toISOString(),
   });
   const [alertsList, setAlertsList] = useState([]);
+  const [lastSyncEvent, setLastSyncEvent] = useState(null);
 
   useEffect(() => {
     const socketUrl =
@@ -44,6 +45,12 @@ export function SocketProvider({ children }) {
       setAlertsList((prev) => [newAlert, ...prev]);
     });
 
+    // Listen for real-time department data synchronization across users
+    socketInstance.on('data_sync', (syncPayload) => {
+      console.log('[Socket.io] Real-time Data Sync Received:', syncPayload);
+      setLastSyncEvent(syncPayload);
+    });
+
     setSocket(socketInstance);
 
     return () => {
@@ -60,6 +67,7 @@ export function SocketProvider({ children }) {
     isConnected,
     activeBolo,
     alertsList,
+    lastSyncEvent,
     dismissBolo,
   };
 

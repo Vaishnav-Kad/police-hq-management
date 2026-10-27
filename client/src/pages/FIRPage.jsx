@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api/axios';
 import NewFIRModal from '../components/firs/NewFIRModal';
 import Modal from '../components/common/Modal';
@@ -128,6 +129,7 @@ const INITIAL_FIRS = [
 
 export default function FIRPage() {
   const { user, stationFilter, stations = [] } = useAuth();
+  const { lastSyncEvent } = useSocket();
   const [firs, setFirs] = useState(INITIAL_FIRS);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -174,6 +176,13 @@ export default function FIRPage() {
   useEffect(() => {
     fetchFIRs();
   }, [stationFilter]);
+
+  // Real-time synchronization when any user files or updates an FIR
+  useEffect(() => {
+    if (lastSyncEvent && lastSyncEvent.entity === 'firs') {
+      fetchFIRs();
+    }
+  }, [lastSyncEvent]);
 
   // Listen to global FIR creation events from anywhere in the app
   useEffect(() => {

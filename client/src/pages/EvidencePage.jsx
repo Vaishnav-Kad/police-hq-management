@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api/axios';
 import NewEvidenceModal from '../components/evidence/NewEvidenceModal';
 import CustodyTransferModal from '../components/evidence/CustodyTransferModal';
@@ -64,6 +65,7 @@ const INITIAL_EVIDENCES = [
 
 export default function EvidencePage() {
   const { user, stationFilter } = useAuth();
+  const { lastSyncEvent } = useSocket();
   const [evidences, setEvidences] = useState(INITIAL_EVIDENCES);
   const [selectedQR, setSelectedQR] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
@@ -77,30 +79,34 @@ export default function EvidencePage() {
   const canAddEvidence = user?.role === 'System-Admin' || user?.role === 'Head-Officer' || user?.role === 'Evidence-Manager';
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchEvidence() {
-      setLoading(true);
-      try {
-        const queryParam = stationFilter !== 'all' ? `?station_id=${stationFilter}` : '';
-        const res = await api.get(`/evidences${queryParam}`);
-        if (isMounted && res.success && res.data) {
-          setEvidences(res.data);
-        }
-      } catch (_) {
-        if (isMounted) {
-          const filtered = stationFilter === 'all'
-            ? INITIAL_EVIDENCES
-            : INITIAL_EVIDENCES.filter((e) => String(e.station_id) === String(stationFilter));
-          setEvidences(filtered);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
+  const fetchEvidence = useCallback(async () => {
+    setLoading(true);
+    try {
+      const queryParam = stationFilter !== 'all' ? `?station_id=${stationFilter}` : '';
+      const res = await api.get(`/evidences${queryParam}`);
+      if (res.success && res.data) {
+        setEvidences(res.data);
       }
+    } catch (_) {
+      const filtered = stationFilter === 'all'
+        ? INITIAL_EVIDENCES
+        : INITIAL_EVIDENCES.filter((e) => String(e.station_id) === String(stationFilter));
+      setEvidences(filtered);
+    } finally {
+      setLoading(false);
     }
-    fetchEvidence();
-    return () => { isMounted = false; };
   }, [stationFilter]);
+
+  useEffect(() => {
+    fetchEvidence();
+  }, [fetchEvidence]);
+
+  // Real-time synchronization when any evidence is cataloged or transferred
+  useEffect(() => {
+    if (lastSyncEvent && lastSyncEvent.entity === 'evidence') {
+      fetchEvidence();
+    }
+  }, [lastSyncEvent, fetchEvidence]);
 
   const handleEvidenceCreated = (newEvidence) => {
     setEvidences((prev) => [

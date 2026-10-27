@@ -3,6 +3,7 @@ import path from 'path';
 import * as evidenceService from '../services/evidenceService.js';
 import { env } from '../config/env.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import { broadcastSync } from '../utils/socketNotifier.js';
 
 export async function getAllEvidences(req, res, next) {
   try {
@@ -61,7 +62,7 @@ export async function createEvidence(req, res, next) {
       witness_name,
       file: req.file,
     });
-
+    broadcastSync(req, { entity: 'evidence', action: 'CREATE', data: result });
     return successResponse(res, result, 'Evidence item cataloged and initial custody logged successfully', 201);
   } catch (err) {
     next(err);
@@ -84,7 +85,7 @@ export async function transferCustody(req, res, next) {
       },
       req.user
     );
-
+    broadcastSync(req, { entity: 'evidence', action: 'TRANSFER', data: result });
     return successResponse(res, result, 'Chain of custody transfer successfully recorded');
   } catch (err) {
     next(err);

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../api/axios';
 import NewWarrantModal from '../components/legal/NewWarrantModal';
 import NewArrestModal from '../components/legal/NewArrestModal';
@@ -97,6 +98,7 @@ const INITIAL_LOCKUPS = [
 
 export default function LegalPage() {
   const { user, stationFilter } = useAuth();
+  const { lastSyncEvent } = useSocket();
   const [hearings, setHearings] = useState(INITIAL_HEARINGS);
   const [warrants, setWarrants] = useState(INITIAL_WARRANTS);
   const [lockups, setLockups] = useState(INITIAL_LOCKUPS);
@@ -120,33 +122,35 @@ export default function LegalPage() {
     return false;
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      try {
-        const [wRes, aRes, hRes] = await Promise.allSettled([
-          api.get('/warrants'),
-          api.get('/arrests'),
-          api.get('/court-dates'),
-        ]);
-        if (isMounted) {
-          if (wRes.status === 'fulfilled' && wRes.value?.success && wRes.value.data?.length > 0) {
-            setWarrants(wRes.value.data);
-          }
-          if (aRes.status === 'fulfilled' && aRes.value?.success && aRes.value.data?.length > 0) {
-            setLockups(aRes.value.data);
-          }
-          if (hRes.status === 'fulfilled' && hRes.value?.success && hRes.value.data?.length > 0) {
-            setHearings(hRes.value.data);
-          }
-        }
-      } catch (_) {}
-    }
-    loadData();
-    return () => {
-      isMounted = false;
-    };
+  const loadData = useCallback(async () => {
+    try {
+      const [wRes, aRes, hRes] = await Promise.allSettled([
+        api.get('/warrants'),
+        api.get('/arrests'),
+        api.get('/court-dates'),
+      ]);
+      if (wRes.status === 'fulfilled' && wRes.value?.success && wRes.value.data?.length > 0) {
+        setWarrants(wRes.value.data);
+      }
+      if (aRes.status === 'fulfilled' && aRes.value?.success && aRes.value.data?.length > 0) {
+        setLockups(aRes.value.data);
+      }
+      if (hRes.status === 'fulfilled' && hRes.value?.success && hRes.value.data?.length > 0) {
+        setHearings(hRes.value.data);
+      }
+    } catch (_) {}
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Real-time synchronization when any user modifies warrants, arrests or hearings
+  useEffect(() => {
+    if (lastSyncEvent && ['arrests', 'warrants', 'court_dates'].includes(lastSyncEvent.entity)) {
+      loadData();
+    }
+  }, [lastSyncEvent, loadData]);
 
   const handleWarrantCreated = (newW) => {
     setWarrants((prev) => [newW, ...prev]);

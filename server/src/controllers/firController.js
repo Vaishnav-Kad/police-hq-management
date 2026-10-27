@@ -1,5 +1,6 @@
 import * as firService from '../services/firService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import { broadcastSync } from '../utils/socketNotifier.js';
 
 export async function getAllFIRs(req, res, next) {
   try {
@@ -76,6 +77,8 @@ export async function createFIR(req, res, next) {
     const fullFIR = await firService.getFIRById(result.firId);
 
     // Notify connected socket rooms if available
+    broadcastSync(req, { entity: 'firs', action: 'CREATE', data: fullFIR });
+    broadcastSync(req, { entity: 'cases', action: 'CREATE', data: fullFIR });
     const io = req.app.get('io');
     if (io) {
       io.emit('new_fir', fullFIR);
@@ -97,6 +100,7 @@ export async function updateFIR(req, res, next) {
       latitude,
       longitude,
     });
+    broadcastSync(req, { entity: 'firs', action: 'UPDATE', data: updated });
     return successResponse(res, updated, 'FIR updated successfully');
   } catch (err) {
     next(err);
@@ -106,6 +110,7 @@ export async function updateFIR(req, res, next) {
 export async function deleteFIR(req, res, next) {
   try {
     const result = await firService.deleteFIR(req.params.id);
+    broadcastSync(req, { entity: 'firs', action: 'DELETE', data: { id: req.params.id } });
     return successResponse(res, result, 'FIR removed successfully');
   } catch (err) {
     next(err);

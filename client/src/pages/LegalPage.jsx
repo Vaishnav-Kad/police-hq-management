@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NewWarrantModal from '../components/legal/NewWarrantModal';
 import NewArrestModal from '../components/legal/NewArrestModal';
+import EditCustodyModal from '../components/legal/EditCustodyModal';
 import {
   Scale,
   FileWarning,
@@ -15,6 +16,7 @@ import {
   Ban,
   Unlock,
   CalendarX,
+  Edit2,
 } from 'lucide-react';
 import { BailStatusBadge } from '../components/common/StatusBadge';
 
@@ -101,6 +103,7 @@ export default function LegalPage() {
 
   const [isWarrantModalOpen, setIsWarrantModalOpen] = useState(false);
   const [isArrestModalOpen, setIsArrestModalOpen] = useState(false);
+  const [editingLockup, setEditingLockup] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
 
   // System-Admin and Head-Officer can add warrants & lockup detainees
@@ -159,6 +162,17 @@ export default function LegalPage() {
     setToastMessage({
       type: 'success',
       text: `Detainee ${newA.detainee || newA.arrestee_name} booked into holding cell.`,
+    });
+    setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const handleCustodyUpdated = (updatedLockup) => {
+    setLockups((prev) =>
+      prev.map((l) => (l.id === updatedLockup.id ? { ...l, ...updatedLockup } : l))
+    );
+    setToastMessage({
+      type: 'success',
+      text: `Custody record for ${updatedLockup.arrestee_name || updatedLockup.detainee || updatedLockup.display_detainee_name || 'Detainee'} updated successfully.`,
     });
     setTimeout(() => setToastMessage(null), 5000);
   };
@@ -496,6 +510,15 @@ export default function LegalPage() {
 
                     {canManage && (
                       <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-800/60">
+                        <button
+                          type="button"
+                          onClick={() => setEditingLockup(l)}
+                          title="Update Holding Cell, Bail Remand & Medical Status"
+                          className="px-2.5 py-1 rounded bg-blue-950/70 hover:bg-blue-900/90 text-blue-300 border border-blue-800/70 text-[11px] font-semibold transition flex items-center space-x-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Update Custody</span>
+                        </button>
                         {isNotReleased && (
                           <button
                             type="button"
@@ -597,6 +620,13 @@ export default function LegalPage() {
         isOpen={isArrestModalOpen}
         onClose={() => setIsArrestModalOpen(false)}
         onArrestCreated={handleArrestCreated}
+      />
+
+      <EditCustodyModal
+        isOpen={Boolean(editingLockup)}
+        lockup={editingLockup}
+        onClose={() => setEditingLockup(null)}
+        onCustodyUpdated={handleCustodyUpdated}
       />
     </div>
   );

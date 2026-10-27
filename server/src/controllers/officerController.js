@@ -72,6 +72,8 @@ export async function createOfficer(req, res, next) {
 export async function updateOfficer(req, res, next) {
   try {
     const {
+      first_name,
+      last_name,
       rank_title,
       role,
       station_id,
@@ -83,18 +85,24 @@ export async function updateOfficer(req, res, next) {
       emergency_contact,
       id_proof_number,
     } = req.body;
-    const officer = await officerService.updateOfficer(req.params.id, {
-      rank_title,
-      role,
-      station_id: station_id ? parseInt(station_id, 10) : undefined,
-      email,
-      phone,
-      password,
-      blood_group,
-      joining_date,
-      emergency_contact,
-      id_proof_number,
-    });
+    const officer = await officerService.updateOfficer(
+      req.params.id,
+      {
+        first_name,
+        last_name,
+        rank_title,
+        role,
+        station_id: station_id ? parseInt(station_id, 10) : undefined,
+        email,
+        phone,
+        password,
+        blood_group,
+        joining_date,
+        emergency_contact,
+        id_proof_number,
+      },
+      req.user
+    );
     return successResponse(res, officer, 'Officer profile updated successfully');
   } catch (err) {
     next(err);

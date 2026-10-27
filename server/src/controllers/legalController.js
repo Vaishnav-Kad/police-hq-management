@@ -326,6 +326,15 @@ export async function createArrest(req, res, next) {
   }
 }
 
+export async function updateArrest(req, res, next) {
+  try {
+    const updated = await legalService.updateArrest(req.params.id, req.body, req.user);
+    return successResponse(res, updated, 'Lockup custody record updated successfully');
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function updateBailStatus(req, res, next) {
   try {
     const { bail_status, bail_amount, release_timestamp } = req.body;

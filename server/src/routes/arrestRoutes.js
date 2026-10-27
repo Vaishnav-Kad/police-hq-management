@@ -4,6 +4,7 @@ import {
   getArrestById,
   createArrest,
   updateBailStatus,
+  updateArrest,
   deleteArrest,
 } from '../controllers/legalController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
@@ -20,6 +21,12 @@ router.post(
   '/',
   authorizeRoles(ROLES.OFFICER, ROLES.HEAD_OFFICER, ROLES.SYSTEM_ADMIN),
   createArrest
+);
+
+router.put(
+  '/:id',
+  authorizeRoles(ROLES.HEAD_OFFICER, ROLES.SYSTEM_ADMIN),
+  updateArrest
 );
 
 router.patch(

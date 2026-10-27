@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NewOfficerModal from '../components/officers/NewOfficerModal';
+import EditOfficerModal from '../components/officers/EditOfficerModal';
 import {
   Shield,
   Plus,
@@ -22,6 +23,7 @@ import {
   Filter,
   Trash2,
   UserX,
+  Edit2,
   AlertCircle,
 } from 'lucide-react';
 
@@ -40,6 +42,7 @@ export default function OfficersPage() {
   const [selectedStation, setSelectedStation] = useState('all');
   const [activeTab, setActiveTab] = useState('roster'); // 'roster' | 'credentials'
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOfficer, setEditingOfficer] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [revealedPasswords, setRevealedPasswords] = useState({});
   const [copiedId, setCopiedId] = useState(null);
@@ -115,6 +118,34 @@ export default function OfficersPage() {
     navigator.clipboard.writeText(memo);
     setCopiedId(officer.id || officer.badge_number);
     setTimeout(() => setCopiedId(null), 3000);
+  };
+
+  const canEditOfficer = (officer) => {
+    if (!user) return false;
+    if (user.role === 'System-Admin') return true;
+    if (user.role === 'Head-Officer') {
+      return (
+        officer.role !== 'System-Admin' &&
+        Number(officer.station_id) === Number(user.station_id)
+      );
+    }
+    return false;
+  };
+
+  const handleOfficerUpdated = (updatedOfficer) => {
+    setOfficers((prev) =>
+      prev.map((o) =>
+        o.id === updatedOfficer.id || o.badge_number === updatedOfficer.badge_number
+          ? { ...o, ...updatedOfficer }
+          : o
+      )
+    );
+    if (refreshGlobalOfficers) refreshGlobalOfficers();
+    setToastMessage({
+      type: 'success',
+      text: `Officer ${updatedOfficer.rank_title} ${updatedOfficer.first_name} ${updatedOfficer.last_name} (${updatedOfficer.badge_number}) updated successfully.`,
+    });
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   const canDecommission = (officer) => {
@@ -447,6 +478,17 @@ export default function OfficersPage() {
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                               <span>Active Duty</span>
                             </span>
+                            {canEditOfficer(officer) && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingOfficer(officer)}
+                                title="Update Officer Record & Clearance"
+                                className="px-2 py-1 rounded bg-blue-950/70 hover:bg-blue-900/90 text-blue-300 hover:text-white border border-blue-800/80 transition shadow-sm flex items-center space-x-1 text-[11px] font-medium"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                <span className="hidden xl:inline">Edit</span>
+                              </button>
+                            )}
                             {canDecommission(officer) && (
                               <button
                                 type="button"
@@ -591,6 +633,14 @@ export default function OfficersPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onOfficerCreated={handleOfficerCreated}
+      />
+
+      {/* Edit Officer Profile Modal */}
+      <EditOfficerModal
+        isOpen={Boolean(editingOfficer)}
+        officer={editingOfficer}
+        onClose={() => setEditingOfficer(null)}
+        onOfficerUpdated={handleOfficerUpdated}
       />
     </div>
   );

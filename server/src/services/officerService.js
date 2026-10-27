@@ -210,6 +210,8 @@ export async function createOfficer({
  * Service: Update officer administrative details
  */
 export async function updateOfficer(officerId, {
+  first_name,
+  last_name,
   rank_title,
   role,
   station_id,
@@ -220,8 +222,43 @@ export async function updateOfficer(officerId, {
   joining_date,
   emergency_contact,
   id_proof_number,
-}) {
-  await getOfficerById(officerId);
+}, requestingUser = null) {
+  const officer = await getOfficerById(officerId, requestingUser);
+
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to modify officer profiles.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer') {
+      if (Number(officer.station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Jurisdiction Access Denied: Head-Officers can only update officers assigned to their own precinct station.');
+        error.statusCode = 403;
+        error.code = 'ERR_FORBIDDEN_STATION';
+        throw error;
+      }
+      if (officer.role === 'System-Admin') {
+        const error = new Error('Permission Denied: Head-Officers cannot modify a System Administrator profile.');
+        error.statusCode = 403;
+        error.code = 'ERR_FORBIDDEN_ACTION';
+        throw error;
+      }
+      if (role === 'System-Admin') {
+        const error = new Error('Permission Denied: Head-Officers cannot promote an officer to System Administrator.');
+        error.statusCode = 403;
+        error.code = 'ERR_FORBIDDEN_ACTION';
+        throw error;
+      }
+      if (station_id && Number(station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Permission Denied: Cross-station transfers require State HQ / System-Admin authorization.');
+        error.statusCode = 403;
+        error.code = 'ERR_FORBIDDEN_ACTION';
+        throw error;
+      }
+    }
+  }
 
   let passwordHash = null;
   let rawPassword = null;
@@ -237,7 +274,9 @@ export async function updateOfficer(officerId, {
 
   await query(
     `UPDATE Police_Officers 
-     SET rank_title = COALESCE(?, rank_title),
+     SET first_name = COALESCE(?, first_name),
+         last_name = COALESCE(?, last_name),
+         rank_title = COALESCE(?, rank_title),
          role = COALESCE(?, role),
          station_id = COALESCE(?, station_id),
          email = COALESCE(?, email),
@@ -250,6 +289,8 @@ export async function updateOfficer(officerId, {
          id_proof_number = COALESCE(?, id_proof_number)
      WHERE id = ?`,
     [
+      first_name ? first_name.trim() : null,
+      last_name ? last_name.trim() : null,
       rank_title ? rank_title.trim() : null,
       role || null,
       station_id || null,
@@ -265,7 +306,26 @@ export async function updateOfficer(officerId, {
     ]
   );
 
-  return await getOfficerById(officerId);
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'OFFICER_UPDATED', 'Police_Officers', ?, ?)`,
+      [
+        requestingUser.id,
+        officerId,
+        JSON.stringify({
+          badge_number: officer.badge_number,
+          officer_name: `${first_name || officer.first_name} ${last_name || officer.last_name}`,
+          rank_title: rank_title || officer.rank_title,
+          role: role || officer.role,
+          station_id: station_id || officer.station_id,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
+  return await getOfficerById(officerId, requestingUser);
 }
 
 /**

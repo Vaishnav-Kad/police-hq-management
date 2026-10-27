@@ -866,6 +866,102 @@ export async function createArrest({
   return await getArrestById(result.insertId);
 }
 
+export async function updateArrest(id, data, requestingUser = null) {
+  const arrest = await getArrestById(id);
+
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to modify custody records.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer' && arrest.station_id) {
+      if (Number(arrest.station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Access Denied: Head-Officers can only modify custody records in their assigned precinct station.');
+        error.statusCode = 403;
+        error.code = 'ERR_STATION_ACCESS_DENIED';
+        throw error;
+      }
+    }
+  }
+
+  const {
+    holding_cell_number,
+    bail_status,
+    bail_amount,
+    custody_type,
+    magistrate_production_deadline,
+    medical_exam_status,
+    medical_officer_notes,
+    relative_intimated,
+    property_seized_inventory,
+    release_timestamp,
+  } = data;
+
+  if (bail_status && !BAIL_STATUSES.includes(bail_status)) {
+    const error = new Error(`Invalid bail status '${bail_status}'. Allowed: ${BAIL_STATUSES.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let releaseTime = release_timestamp !== undefined 
+    ? (release_timestamp ? new Date(release_timestamp) : null) 
+    : undefined;
+  if ((bail_status === 'Released on Bail' || bail_status === 'Granted') && releaseTime === undefined && !arrest.release_timestamp) {
+    releaseTime = new Date();
+  }
+
+  await query(
+    `UPDATE Arrests_And_Custody
+     SET holding_cell_number = COALESCE(?, holding_cell_number),
+         bail_status = COALESCE(?, bail_status),
+         bail_amount = COALESCE(?, bail_amount),
+         custody_type = COALESCE(?, custody_type),
+         magistrate_production_deadline = COALESCE(?, magistrate_production_deadline),
+         medical_exam_status = COALESCE(?, medical_exam_status),
+         medical_officer_notes = COALESCE(?, medical_officer_notes),
+         relative_intimated = COALESCE(?, relative_intimated),
+         property_seized_inventory = COALESCE(?, property_seized_inventory),
+         release_timestamp = COALESCE(?, release_timestamp)
+     WHERE id = ?`,
+    [
+      holding_cell_number ? holding_cell_number.trim() : null,
+      bail_status || null,
+      bail_amount !== undefined ? Number(bail_amount) : null,
+      custody_type ? custody_type.trim() : null,
+      magistrate_production_deadline ? new Date(magistrate_production_deadline) : null,
+      medical_exam_status ? medical_exam_status.trim() : null,
+      medical_officer_notes ? medical_officer_notes.trim() : null,
+      relative_intimated ? relative_intimated.trim() : null,
+      property_seized_inventory ? property_seized_inventory.trim() : null,
+      releaseTime !== undefined ? releaseTime : null,
+      id,
+    ]
+  );
+
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'JAIL_CUSTODY_UPDATED', 'Arrests_And_Custody', ?, ?)`,
+      [
+        requestingUser.id,
+        id,
+        JSON.stringify({
+          arrest_number: arrest.arrest_number,
+          detainee: arrest.arrestee_name || arrest.suspect_name,
+          cell: holding_cell_number || arrest.holding_cell_number,
+          bail_status: bail_status || arrest.bail_status,
+          custody_type: custody_type || arrest.custody_type,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
+  return await getArrestById(id);
+}
+
 export async function updateBailStatus(id, { bail_status, bail_amount, release_timestamp }, requestingUser = null) {
   const arrest = await getArrestById(id);
 

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NewCriminalModal from '../components/criminals/NewCriminalModal';
-import { Users, Search, Plus, CheckCircle2, ShieldAlert, Trash2, AlertCircle } from 'lucide-react';
+import EditCriminalModal from '../components/criminals/EditCriminalModal';
+import { Users, Search, Plus, CheckCircle2, ShieldAlert, Trash2, Edit2, AlertCircle } from 'lucide-react';
 
 const INITIAL_CRIMINALS = [
   {
@@ -77,6 +78,7 @@ export default function CriminalsPage() {
   const [criminals, setCriminals] = useState(INITIAL_CRIMINALS);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCriminal, setEditingCriminal] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -123,6 +125,27 @@ export default function CriminalsPage() {
       text: `Criminal profile for ${newCriminal.first_name} ${newCriminal.last_name} registered.`,
     });
     setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const handleCriminalUpdated = (updated) => {
+    setCriminals((prev) =>
+      prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
+    );
+    setToastMessage({
+      type: 'success',
+      text: `Criminal dossier for ${updated.first_name} ${updated.last_name} updated successfully.`,
+    });
+    setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const canEditCriminal = (c) => {
+    if (!user) return false;
+    if (user.role === 'System-Admin') return true;
+    if (user.role === 'Head-Officer') {
+      if (!c.station_id) return true;
+      return Number(c.station_id) === Number(user.station_id);
+    }
+    return user.role === 'Officer';
   };
 
   const canDeleteCriminal = (c) => {
@@ -335,6 +358,16 @@ export default function CriminalsPage() {
                 >
                   View Dossier →
                 </button>
+                {canEditCriminal(c) && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingCriminal(c)}
+                    title="Update Criminal Dossier"
+                    className="p-1 rounded bg-blue-950/60 hover:bg-blue-900/80 text-blue-400 hover:text-white border border-blue-800/60 transition"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {canDeleteCriminal(c) && (
                   <button
                     type="button"
@@ -364,6 +397,14 @@ export default function CriminalsPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCriminalCreated={handleCriminalCreated}
+      />
+
+      {/* Edit Criminal Dossier Modal */}
+      <EditCriminalModal
+        isOpen={Boolean(editingCriminal)}
+        criminal={editingCriminal}
+        onClose={() => setEditingCriminal(null)}
+        onCriminalUpdated={handleCriminalUpdated}
       />
     </div>
   );

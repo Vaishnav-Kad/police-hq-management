@@ -135,14 +135,10 @@ export default function NewArrestModal({ isOpen, onClose, onArrestCreated }) {
             cell: res.data.holding_cell_number || `${holdingCell} (${selectedStation?.name})`,
           });
         }
-      } else {
-        if (onArrestCreated) onArrestCreated(newDetainee);
+        onClose();
       }
-      onClose();
-    } catch (_) {
-      // Local fallback
-      if (onArrestCreated) onArrestCreated(newDetainee);
-      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to book detainee into holding cell. Please review your data.');
     } finally {
       setIsSubmitting(false);
     }

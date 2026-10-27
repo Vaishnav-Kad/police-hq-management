@@ -28,18 +28,50 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Helper to extract clear, human-readable error messages from any API or network error
+export function getErrorMessage(err, fallback = 'Operation failed. Please review your input.') {
+  if (!err) return fallback;
+  if (typeof err === 'string') return err;
+  if (err.message && typeof err.message === 'string' && err.message.trim() !== '') {
+    return err.message;
+  }
+  if (err.error?.message) {
+    return err.error.message;
+  }
+  if (err.response?.data?.error?.message) {
+    return err.response.data.error.message;
+  }
+  if (err.response?.data?.message) {
+    return err.response.data.message;
+  }
+  return fallback;
+}
+
 // Response Interceptor: Normalize responses and catch authentication drops
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const errorResponse = error.response?.data || {
+    const data = error.response?.data;
+    const detailedMessage =
+      data?.error?.message ||
+      data?.message ||
+      error.message ||
+      'Network communication error with Police HQ API.';
+
+    const errorResponse = {
       success: false,
-      message: error.message || 'Network communication error with Police HQ API.',
+      message: detailedMessage,
+      error: data?.error || {
+        code: `ERR_${error.response?.status || 500}`,
+        message: detailedMessage,
+      },
+      details: data?.error?.details || data?.details || null,
+      status: error.response?.status || 500,
+      response: error.response, // Preserves backward compatibility with err.response?.data
     };
 
     if (error.response?.status === 401) {
       console.warn('[API Auth] Session expired or unauthorized. Token cleared.');
-      // Optional: window.dispatchEvent(new CustomEvent('auth:expired'));
     }
 
     return Promise.reject(errorResponse);

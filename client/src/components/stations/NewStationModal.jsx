@@ -59,11 +59,8 @@ export default function NewStationModal({ isOpen, onClose, onStationCreated }) {
       if (fetchStations) fetchStations();
       if (onStationCreated) onStationCreated(finalStation);
       onClose();
-    } catch (_) {
-      // Local fallback so user is never blocked
-      if (addStationToState) addStationToState(fallbackStation);
-      if (onStationCreated) onStationCreated(fallbackStation);
-      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to register Police Station. Please review your data.');
     } finally {
       setIsSubmitting(false);
     }

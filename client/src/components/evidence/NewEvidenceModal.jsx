@@ -106,15 +106,13 @@ export default function NewEvidenceModal({ isOpen, onClose, onEvidenceCreated })
         onClose();
         return;
       }
-    } catch (_) {
-      // Smooth fallback to local ledger
+    } catch (err) {
+      setError(err.message || 'Failed to catalog evidence item. Please review your data.');
+      setIsSubmitting(false);
+      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (onEvidenceCreated) {
-      onEvidenceCreated(fallbackEvidence);
-    }
-    onClose();
-    setIsSubmitting(false);
   };
 
   return (

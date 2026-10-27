@@ -97,14 +97,10 @@ export default function NewWarrantModal({ isOpen, onClose, onWarrantCreated }) {
             station_name: selectedStation?.name,
           });
         }
-      } else {
-        if (onWarrantCreated) onWarrantCreated(newWarrant);
+        onClose();
       }
-      onClose();
-    } catch (_) {
-      // Local fallback
-      if (onWarrantCreated) onWarrantCreated(newWarrant);
-      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to issue judicial warrant. Please review your data.');
     } finally {
       setIsSubmitting(false);
     }

@@ -174,16 +174,8 @@ export default function NewFIRModal({ isOpen, onClose, onFIRCreated }) {
       window.dispatchEvent(new CustomEvent('phdms_fir_created', { detail: createdFIR }));
       if (onFIRCreated) onFIRCreated(createdFIR);
       onClose();
-    } catch (_) {
-      try {
-        const custom = JSON.parse(localStorage.getItem('phdms_custom_firs') || '[]');
-        custom.unshift(fallbackFIR);
-        localStorage.setItem('phdms_custom_firs', JSON.stringify(custom));
-      } catch (_) {}
-
-      window.dispatchEvent(new CustomEvent('phdms_fir_created', { detail: fallbackFIR }));
-      if (onFIRCreated) onFIRCreated(fallbackFIR);
-      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to file First Information Report (FIR). Please check your data.');
     } finally {
       setIsSubmitting(false);
     }

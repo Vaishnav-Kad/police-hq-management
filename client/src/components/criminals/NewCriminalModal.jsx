@@ -73,15 +73,13 @@ export default function NewCriminalModal({ isOpen, onClose, onCriminalCreated })
         onClose();
         return;
       }
-    } catch (_) {
-      // Smooth fallback to local ledger
+    } catch (err) {
+      setError(err.message || 'Failed to register criminal dossier. Please review your data.');
+      setIsSubmitting(false);
+      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (onCriminalCreated) {
-      onCriminalCreated(fallbackCriminal);
-    }
-    onClose();
-    setIsSubmitting(false);
   };
 
   return (

@@ -91,10 +91,14 @@ export async function getCourtDateById(id) {
       cd.updated_at,
       c.case_number,
       c.case_status,
+      f.station_id,
+      s.name AS station_name,
       CONCAT(cr.first_name, ' ', cr.last_name) AS accused_name,
       cr.alias AS accused_alias
     FROM Court_Dates cd
     JOIN Cases c ON cd.case_id = c.id
+    LEFT JOIN FIR f ON c.fir_id = f.id
+    LEFT JOIN Police_Stations s ON f.station_id = s.id
     LEFT JOIN Criminals cr ON cd.criminal_id = cr.id
     WHERE cd.id = ?;
   `;
@@ -167,9 +171,46 @@ export async function updateCourtDate(id, { hearing_date, court_name, judge_name
   return await getCourtDateById(id);
 }
 
-export async function deleteCourtDate(id) {
-  await getCourtDateById(id);
+export async function deleteCourtDate(id, requestingUser = null) {
+  const hearing = await getCourtDateById(id);
+
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to cancel court hearings.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer' && hearing.station_id) {
+      if (Number(hearing.station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Access Denied: Head-Officers can only cancel hearings for cases within their assigned precinct.');
+        error.statusCode = 403;
+        error.code = 'ERR_STATION_ACCESS_DENIED';
+        throw error;
+      }
+    }
+  }
+
   await query(`DELETE FROM Court_Dates WHERE id = ?`, [id]);
+
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'COURT_HEARING_CANCELLED', 'Court_Dates', ?, ?)`,
+      [
+        requestingUser.id,
+        id,
+        JSON.stringify({
+          case_id: hearing.case_id,
+          case_number: hearing.case_number,
+          court_name: hearing.court_name,
+          hearing_date: hearing.hearing_date,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
   return { id, deleted: true };
 }
 
@@ -365,13 +406,32 @@ export async function createWarrant({
   return await getWarrantById(result.insertId);
 }
 
-export async function updateWarrantStatus(id, { status, execution_date }) {
-  await getWarrantById(id);
+export async function updateWarrantStatus(id, { status, execution_date }, requestingUser = null) {
+  const warrant = await getWarrantById(id);
 
   if (!WARRANT_STATUSES.includes(status)) {
     const error = new Error(`Invalid warrant status '${status}'. Allowed: ${WARRANT_STATUSES.join(', ')}`);
     error.statusCode = 400;
     throw error;
+  }
+
+  const warrantStationId = warrant.station_id || warrant.case_station_id;
+
+  if (requestingUser) {
+    if (status === 'Cancelled' && requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to cancel judicial warrants.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer' && warrantStationId) {
+      if (Number(warrantStationId) !== Number(requestingUser.station_id)) {
+        const error = new Error('Access Denied: Head-Officers can only update warrants within their assigned precinct.');
+        error.statusCode = 403;
+        error.code = 'ERR_STATION_ACCESS_DENIED';
+        throw error;
+      }
+    }
   }
 
   let execDate = execution_date ? new Date(execution_date) : null;
@@ -384,12 +444,65 @@ export async function updateWarrantStatus(id, { status, execution_date }) {
     [status, execDate, id]
   );
 
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'WARRANT_STATUS_UPDATE', 'Warrants', ?, ?)`,
+      [
+        requestingUser.id,
+        id,
+        JSON.stringify({
+          warrant_number: warrant.warrant_number,
+          previous_status: warrant.status,
+          new_status: status,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
   return await getWarrantById(id);
 }
 
-export async function deleteWarrant(id) {
-  await getWarrantById(id);
+export async function deleteWarrant(id, requestingUser = null) {
+  const warrant = await getWarrantById(id);
+
+  const warrantStationId = warrant.station_id || warrant.case_station_id;
+
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to remove warrants.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer' && warrantStationId) {
+      if (Number(warrantStationId) !== Number(requestingUser.station_id)) {
+        const error = new Error('Access Denied: Head-Officers can only remove warrants within their assigned precinct.');
+        error.statusCode = 403;
+        error.code = 'ERR_STATION_ACCESS_DENIED';
+        throw error;
+      }
+    }
+  }
+
   await query(`DELETE FROM Warrants WHERE id = ?`, [id]);
+
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'WARRANT_REMOVED', 'Warrants', ?, ?)`,
+      [
+        requestingUser.id,
+        id,
+        JSON.stringify({
+          warrant_number: warrant.warrant_number,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
   return { id, deleted: true };
 }
 
@@ -753,8 +866,8 @@ export async function createArrest({
   return await getArrestById(result.insertId);
 }
 
-export async function updateBailStatus(id, { bail_status, bail_amount, release_timestamp }) {
-  await getArrestById(id);
+export async function updateBailStatus(id, { bail_status, bail_amount, release_timestamp }, requestingUser = null) {
+  const arrest = await getArrestById(id);
 
   if (!BAIL_STATUSES.includes(bail_status)) {
     const error = new Error(`Invalid bail status '${bail_status}'. Allowed: ${BAIL_STATUSES.join(', ')}`);
@@ -762,8 +875,25 @@ export async function updateBailStatus(id, { bail_status, bail_amount, release_t
     throw error;
   }
 
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to discharge detainees or modify bail status.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer' && arrest.station_id) {
+      if (Number(arrest.station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Access Denied: Head-Officers can only discharge detainees booked in their assigned precinct station.');
+        error.statusCode = 403;
+        error.code = 'ERR_STATION_ACCESS_DENIED';
+        throw error;
+      }
+    }
+  }
+
   let releaseTime = release_timestamp ? new Date(release_timestamp) : null;
-  if (bail_status === 'Released on Bail' && !releaseTime) {
+  if ((bail_status === 'Released on Bail' || bail_status === 'Granted') && !releaseTime) {
     releaseTime = new Date();
   }
 
@@ -776,11 +906,66 @@ export async function updateBailStatus(id, { bail_status, bail_amount, release_t
     [bail_status, bail_amount !== undefined ? Number(bail_amount) : null, releaseTime, id]
   );
 
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'JAIL_CUSTODY_DISCHARGED', 'Arrests_And_Custody', ?, ?)`,
+      [
+        requestingUser.id,
+        id,
+        JSON.stringify({
+          arrest_number: arrest.arrest_number,
+          detainee: arrest.arrestee_name || arrest.suspect_name,
+          cell: arrest.holding_cell_number,
+          previous_bail: arrest.bail_status,
+          new_bail: bail_status,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
   return await getArrestById(id);
 }
 
-export async function deleteArrest(id) {
-  await getArrestById(id);
+export async function deleteArrest(id, requestingUser = null) {
+  const arrest = await getArrestById(id);
+
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to remove custody records.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+    if (requestingUser.role === 'Head-Officer' && arrest.station_id) {
+      if (Number(arrest.station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Access Denied: Head-Officers can only remove custody records in their assigned precinct station.');
+        error.statusCode = 403;
+        error.code = 'ERR_STATION_ACCESS_DENIED';
+        throw error;
+      }
+    }
+  }
+
   await query(`DELETE FROM Arrests_And_Custody WHERE id = ?`, [id]);
+
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'JAIL_CUSTODY_RECORD_REMOVED', 'Arrests_And_Custody', ?, ?)`,
+      [
+        requestingUser.id,
+        id,
+        JSON.stringify({
+          arrest_number: arrest.arrest_number,
+          detainee: arrest.arrestee_name || arrest.suspect_name,
+          cell: arrest.holding_cell_number,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
   return { id, deleted: true };
 }

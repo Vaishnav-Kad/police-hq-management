@@ -74,8 +74,8 @@ export async function updateCourtDate(req, res, next) {
 
 export async function deleteCourtDate(req, res, next) {
   try {
-    const result = await legalService.deleteCourtDate(req.params.id);
-    return successResponse(res, result, 'Court hearing removed successfully');
+    const result = await legalService.deleteCourtDate(req.params.id, req.user);
+    return successResponse(res, result, 'Court hearing cancelled successfully');
   } catch (err) {
     next(err);
   }
@@ -158,7 +158,7 @@ export async function updateWarrantStatus(req, res, next) {
     if (!status) {
       return errorResponse(res, 'New status is required.', 400);
     }
-    const updated = await legalService.updateWarrantStatus(req.params.id, { status, execution_date });
+    const updated = await legalService.updateWarrantStatus(req.params.id, { status, execution_date }, req.user);
     return successResponse(res, updated, 'Warrant status updated successfully');
   } catch (err) {
     next(err);
@@ -167,7 +167,7 @@ export async function updateWarrantStatus(req, res, next) {
 
 export async function deleteWarrant(req, res, next) {
   try {
-    const result = await legalService.deleteWarrant(req.params.id);
+    const result = await legalService.deleteWarrant(req.params.id, req.user);
     return successResponse(res, result, 'Warrant removed successfully');
   } catch (err) {
     next(err);
@@ -336,8 +336,8 @@ export async function updateBailStatus(req, res, next) {
       bail_status,
       bail_amount,
       release_timestamp,
-    });
-    return successResponse(res, updated, 'Bail status updated successfully');
+    }, req.user);
+    return successResponse(res, updated, 'Bail and lockup custody status updated successfully');
   } catch (err) {
     next(err);
   }
@@ -345,8 +345,8 @@ export async function updateBailStatus(req, res, next) {
 
 export async function deleteArrest(req, res, next) {
   try {
-    const result = await legalService.deleteArrest(req.params.id);
-    return successResponse(res, result, 'Arrest record removed successfully');
+    const result = await legalService.deleteArrest(req.params.id, req.user);
+    return successResponse(res, result, 'Detainee custody record removed successfully');
   } catch (err) {
     next(err);
   }

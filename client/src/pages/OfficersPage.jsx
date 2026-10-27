@@ -20,6 +20,9 @@ import {
   Lock,
   Users,
   Filter,
+  Trash2,
+  UserX,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function OfficersPage() {
@@ -93,6 +96,41 @@ export default function OfficersPage() {
     setTimeout(() => setCopiedId(null), 3000);
   };
 
+  const canDecommission = (officer) => {
+    if (!user) return false;
+    if (String(officer.id) === String(user.id)) return false; // Cannot delete self
+    if (user.role === 'System-Admin') return true;
+    if (user.role === 'Head-Officer') {
+      return (
+        officer.role !== 'System-Admin' &&
+        Number(officer.station_id) === Number(user.station_id)
+      );
+    }
+    return false;
+  };
+
+  const handleDecommissionOfficer = async (officer) => {
+    const confirmMsg = `Are you sure you want to decommission Officer ${officer.rank_title || ''} ${officer.first_name} ${officer.last_name} (${officer.badge_number}) from active service?\n\nThis will revoke their login access and duty status.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await api.delete(`/officers/${officer.id}`);
+      setOfficers((prev) => prev.filter((o) => o.id !== officer.id));
+      if (refreshGlobalOfficers) refreshGlobalOfficers();
+      setToastMessage({
+        type: 'success',
+        text: `Officer ${officer.first_name} ${officer.last_name} (${officer.badge_number}) decommissioned from service.`,
+      });
+      setTimeout(() => setToastMessage(null), 5000);
+    } catch (err) {
+      setToastMessage({
+        type: 'error',
+        text: err.message || 'Failed to decommission officer.',
+      });
+      setTimeout(() => setToastMessage(null), 6000);
+    }
+  };
+
   // Full Department Filter (Search, Station, Role)
   const filteredOfficers = officers.filter((o) => {
     if (selectedStation !== 'all' && String(o.station_id) !== String(selectedStation)) {
@@ -136,9 +174,21 @@ export default function OfficersPage() {
     <div className="space-y-6">
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="p-4 bg-emerald-950/60 border border-emerald-800/80 rounded-xl text-xs text-emerald-300 flex items-center space-x-2 shadow-lg animate-fade-in">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-          <span className="font-semibold">{toastMessage}</span>
+        <div
+          className={`p-4 border rounded-xl text-xs flex items-center space-x-2 shadow-lg animate-fade-in ${
+            (typeof toastMessage === 'object' && toastMessage.type === 'error')
+              ? 'bg-red-950/80 border-red-800 text-red-200'
+              : 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
+          }`}
+        >
+          {typeof toastMessage === 'object' && toastMessage.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+          )}
+          <span className="font-semibold">
+            {typeof toastMessage === 'object' ? toastMessage.text : toastMessage}
+          </span>
         </div>
       )}
 
@@ -284,7 +334,7 @@ export default function OfficersPage() {
                   <th className="p-3.5">Assigned Precinct Station</th>
                   <th className="p-3.5">Role Clearance</th>
                   <th className="p-3.5">Contact Particulars</th>
-                  <th className="p-3.5 text-right">Duty Status</th>
+                  <th className="p-3.5 text-right">Duty Status & Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-hq-border text-slate-300">
@@ -371,10 +421,23 @@ export default function OfficersPage() {
                           <div className="text-[10px] text-hq-muted">{officer.phone || '+91 98200 00000'}</div>
                         </td>
                         <td className="p-3.5 text-right">
-                          <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-900 text-slate-300 text-[11px] font-semibold border border-slate-800">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span>Active Duty</span>
-                          </span>
+                          <div className="flex items-center justify-end space-x-2">
+                            <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-900 text-slate-300 text-[11px] font-semibold border border-slate-800">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              <span>Active Duty</span>
+                            </span>
+                            {canDecommission(officer) && (
+                              <button
+                                type="button"
+                                onClick={() => handleDecommissionOfficer(officer)}
+                                title="Decommission Officer from Active Service"
+                                className="px-2 py-1 rounded bg-red-950/70 hover:bg-red-900/90 text-red-300 hover:text-white border border-red-800/80 transition shadow-sm flex items-center space-x-1 text-[11px] font-medium"
+                              >
+                                <UserX className="w-3.5 h-3.5" />
+                                <span className="hidden xl:inline">Decommission</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

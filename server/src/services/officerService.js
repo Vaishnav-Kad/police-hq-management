@@ -269,10 +269,33 @@ export async function updateOfficer(officerId, {
 }
 
 /**
- * Service: Soft-delete officer
+ * Service: Soft-delete / decommission officer with rank & station checks
  */
-export async function deleteOfficer(officerId) {
-  await getOfficerById(officerId);
+export async function deleteOfficer(officerId, requestingUser = null) {
+  const officer = await getOfficerById(officerId);
+
+  if (requestingUser) {
+    if (requestingUser.role === 'Head-Officer') {
+      if (Number(officer.station_id) !== Number(requestingUser.station_id)) {
+        const error = new Error('Jurisdiction Access Denied: Head Officers can only decommission officers assigned to their own precinct station.');
+        error.statusCode = 403;
+        error.code = 'ERR_FORBIDDEN_STATION';
+        throw error;
+      }
+      if (officer.role === 'System-Admin') {
+        const error = new Error('Permission Denied: Head Officers cannot decommission a System Administrator.');
+        error.statusCode = 403;
+        error.code = 'ERR_FORBIDDEN_ACTION';
+        throw error;
+      }
+    }
+    if (Number(officerId) === Number(requestingUser.id)) {
+      const error = new Error('Action Denied: You cannot decommission your own active officer account.');
+      error.statusCode = 400;
+      error.code = 'ERR_SELF_DECOMMISSION';
+      throw error;
+    }
+  }
 
   // Check if officer is assigned to active open cases
   const assignedCases = await query(
@@ -282,7 +305,7 @@ export async function deleteOfficer(officerId) {
 
   if (assignedCases[0].total > 0) {
     const error = new Error(
-      `Cannot deactivate Officer #${officerId}: currently assigned as primary investigator on ${assignedCases[0].total} active cases. Reassign cases first.`
+      `Cannot deactivate Officer ${officer.rank_title} ${officer.first_name} ${officer.last_name}: currently assigned as primary investigator on ${assignedCases[0].total} active cases. Reassign cases first.`
     );
     error.statusCode = 400;
     error.code = 'ERR_OFFICER_HAS_ACTIVE_CASES';
@@ -290,5 +313,25 @@ export async function deleteOfficer(officerId) {
   }
 
   await query(`UPDATE Police_Officers SET is_deleted = TRUE WHERE id = ?`, [officerId]);
+
+  // Record Audit Log
+  const actorId = requestingUser?.id || officerId;
+  await query(
+    `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+     VALUES (?, 'OFFICER_DECOMMISSIONED', 'Police_Officers', ?, ?)`,
+    [
+      actorId,
+      officerId,
+      JSON.stringify({
+        decommissioned_badge: officer.badge_number,
+        officer_name: `${officer.first_name} ${officer.last_name}`,
+        rank_title: officer.rank_title,
+        station_id: officer.station_id,
+        actor_badge: requestingUser?.badge_number || 'SYSTEM',
+        timestamp: new Date().toISOString(),
+      }),
+    ]
+  );
+
   return { id: officerId, is_deleted: true };
 }

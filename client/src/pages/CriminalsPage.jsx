@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NewCriminalModal from '../components/criminals/NewCriminalModal';
-import { Users, Search, Plus, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Users, Search, Plus, CheckCircle2, ShieldAlert, Trash2, AlertCircle } from 'lucide-react';
 
 const INITIAL_CRIMINALS = [
   {
@@ -118,8 +118,43 @@ export default function CriminalsPage() {
       },
       ...prev,
     ]);
-    setToastMessage(`Criminal profile for ${newCriminal.first_name} ${newCriminal.last_name} registered.`);
+    setToastMessage({
+      type: 'success',
+      text: `Criminal profile for ${newCriminal.first_name} ${newCriminal.last_name} registered.`,
+    });
     setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const canDeleteCriminal = (c) => {
+    if (!user) return false;
+    if (user.role === 'System-Admin') return true;
+    if (user.role === 'Head-Officer') {
+      if (!c.station_id) return true;
+      return Number(c.station_id) === Number(user.station_id);
+    }
+    return false;
+  };
+
+  const handleDeleteCriminal = async (c) => {
+    const name = `${c.first_name} ${c.last_name}${c.alias ? ` (${c.alias})` : ''}`;
+    if (!window.confirm(`Are you sure you want to deactivate and archive criminal dossier for ${name}?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/criminals/${c.id}`);
+      setCriminals((prev) => prev.filter((item) => item.id !== c.id));
+      setToastMessage({
+        type: 'success',
+        text: `Criminal dossier for ${name} deactivated and archived.`,
+      });
+      setTimeout(() => setToastMessage(null), 5000);
+    } catch (err) {
+      setToastMessage({
+        type: 'error',
+        text: err.message || 'Failed to deactivate criminal dossier.',
+      });
+      setTimeout(() => setToastMessage(null), 6000);
+    }
   };
 
   const filteredCriminals = (stationFilter === 'all'
@@ -141,9 +176,21 @@ export default function CriminalsPage() {
     <div className="space-y-6">
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="p-4 bg-emerald-950/60 border border-emerald-800/80 rounded-xl text-xs text-emerald-300 flex items-center space-x-2 shadow-lg animate-fade-in">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-          <span className="font-semibold">{toastMessage}</span>
+        <div
+          className={`p-4 border rounded-xl text-xs flex items-center space-x-2 shadow-lg animate-fade-in ${
+            typeof toastMessage === 'object' && toastMessage.type === 'error'
+              ? 'bg-red-950/80 border-red-800 text-red-200'
+              : 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
+          }`}
+        >
+          {typeof toastMessage === 'object' && toastMessage.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+          )}
+          <span className="font-semibold">
+            {typeof toastMessage === 'object' ? toastMessage.text : toastMessage}
+          </span>
         </div>
       )}
 
@@ -276,16 +323,29 @@ export default function CriminalsPage() {
               <span className="text-[11px] font-semibold text-red-400">
                 {c.status || 'Active Suspect'}
               </span>
-              <button
-                onClick={() =>
-                  alert(
-                    `Criminal Dossier Inspector:\nName: ${c.first_name} ${c.last_name} (${c.alias || 'No alias'})\nPhysical: ${c.physical_description}\nCase: ${c.linked_case || 'None'}`
-                  )
-                }
-                className="text-blue-400 hover:text-blue-300 font-semibold text-xs transition"
-              >
-                View Dossier →
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    alert(
+                      `Criminal Dossier Inspector:\nName: ${c.first_name} ${c.last_name} (${c.alias || 'No alias'})\nPhysical: ${c.physical_description}\nCase: ${c.linked_case || 'None'}`
+                    )
+                  }
+                  className="text-blue-400 hover:text-blue-300 font-semibold text-xs transition"
+                >
+                  View Dossier →
+                </button>
+                {canDeleteCriminal(c) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCriminal(c)}
+                    title="Deactivate / Archive Criminal Dossier"
+                    className="p-1 rounded bg-red-950/60 hover:bg-red-900/80 text-red-400 hover:text-white border border-red-800/60 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}

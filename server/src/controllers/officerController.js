@@ -103,8 +103,8 @@ export async function updateOfficer(req, res, next) {
 
 export async function deleteOfficer(req, res, next) {
   try {
-    const result = await officerService.deleteOfficer(req.params.id);
-    return successResponse(res, result, 'Officer account deactivated successfully');
+    const result = await officerService.deleteOfficer(req.params.id, req.user);
+    return successResponse(res, result, 'Officer account decommissioned successfully');
   } catch (err) {
     next(err);
   }

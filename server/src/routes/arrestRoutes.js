@@ -24,13 +24,13 @@ router.post(
 
 router.patch(
   '/:id/bail',
-  authorizeRoles(ROLES.OFFICER, ROLES.HEAD_OFFICER, ROLES.SYSTEM_ADMIN),
+  authorizeRoles(ROLES.HEAD_OFFICER, ROLES.SYSTEM_ADMIN),
   updateBailStatus
 );
 
 router.delete(
   '/:id',
-  authorizeRoles(ROLES.SYSTEM_ADMIN),
+  authorizeRoles(ROLES.HEAD_OFFICER, ROLES.SYSTEM_ADMIN),
   deleteArrest
 );
 

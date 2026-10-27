@@ -253,11 +253,38 @@ export async function updateMugshot(criminalId, mugshotPath) {
 }
 
 /**
- * Service: Soft delete criminal
+ * Service: Soft delete / archive criminal
  */
-export async function deleteCriminal(criminalId) {
-  await getCriminalById(criminalId);
+export async function deleteCriminal(criminalId, requestingUser = null) {
+  const crim = await getCriminalById(criminalId);
+
+  if (requestingUser) {
+    if (requestingUser.role !== 'Head-Officer' && requestingUser.role !== 'System-Admin') {
+      const error = new Error('Access Denied: Only Head-Officers and System-Admins are authorized to deactivate criminal dossiers.');
+      error.statusCode = 403;
+      error.code = 'ERR_UNAUTHORIZED';
+      throw error;
+    }
+  }
+
   await query(`UPDATE Criminals SET is_deleted = TRUE WHERE id = ?`, [criminalId]);
+
+  if (requestingUser?.id) {
+    await query(
+      `INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+       VALUES (?, 'CRIMINAL_RECORD_DEACTIVATED', 'Criminals', ?, ?)`,
+      [
+        requestingUser.id,
+        criminalId,
+        JSON.stringify({
+          name: `${crim.first_name} ${crim.last_name}`,
+          alias: crim.alias,
+          actor_badge: requestingUser.badge_number,
+        }),
+      ]
+    );
+  }
+
   return { id: criminalId, is_deleted: true };
 }
 

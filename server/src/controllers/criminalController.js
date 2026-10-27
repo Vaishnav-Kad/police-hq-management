@@ -95,7 +95,7 @@ export async function uploadMugshot(req, res, next) {
 
 export async function deleteCriminal(req, res, next) {
   try {
-    const result = await criminalService.deleteCriminal(req.params.id);
+    const result = await criminalService.deleteCriminal(req.params.id, req.user);
     return successResponse(res, result, 'Criminal record deactivated successfully');
   } catch (err) {
     next(err);

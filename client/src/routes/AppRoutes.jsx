@@ -53,7 +53,7 @@ export default function AppRoutes() {
         <Route
           path="officers"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['System-Admin', 'Head-Officer']}>
               <OfficersPage />
             </ProtectedRoute>
           }

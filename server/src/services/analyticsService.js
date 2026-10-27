@@ -71,26 +71,32 @@ export async function getDashboardSummary(stationId = null) {
  * Service: Crime category distribution
  */
 export async function getCrimeTypeDistribution(stationId = null) {
-  let sql = `
+  let denominatorFilter = 'WHERE is_deleted = FALSE';
+  let stationFilter = '';
+  const queryParams = [];
+
+  if (stationId) {
+    denominatorFilter += ' AND station_id = ?';
+    stationFilter = ' AND f.station_id = ?';
+    queryParams.push(stationId, stationId);
+  }
+
+  const sql = `
     SELECT 
       f.crime_type,
       COUNT(f.id) AS total_incidents,
-      ROUND(COUNT(f.id) * 100.0 / (SELECT COUNT(*) FROM FIR WHERE is_deleted = FALSE), 1) AS percentage
+      ROUND(COUNT(f.id) * 100.0 / NULLIF((SELECT COUNT(*) FROM FIR ${denominatorFilter}), 0), 1) AS percentage
     FROM FIR f
-    WHERE f.is_deleted = FALSE
+    WHERE f.is_deleted = FALSE ${stationFilter}
+    GROUP BY f.crime_type 
+    ORDER BY total_incidents DESC;
   `;
-  const params = [];
-  if (stationId) {
-    sql += ` AND f.station_id = ?`;
-    params.push(stationId);
-  }
-  sql += ` GROUP BY f.crime_type ORDER BY total_incidents DESC;`;
 
-  return await query(sql, params);
+  return await query(sql, queryParams);
 }
 
 /**
- * Service: 12-month calendar trends (ensures 12 monthly slots)
+ * Service: 12-month calendar trends (ensures all 12 consecutive monthly slots)
  */
 export async function getMonthlyCrimeTrends(stationId = null) {
   let sql = `
@@ -99,7 +105,7 @@ export async function getMonthlyCrimeTrends(stationId = null) {
       COUNT(f.id) AS incident_count,
       COUNT(CASE WHEN c.case_status = 'Closed' THEN 1 END) AS closed_count
     FROM FIR f
-    LEFT JOIN Cases c ON f.id = c.fir_id
+    LEFT JOIN Cases c ON f.id = c.fir_id AND c.is_deleted = FALSE
     WHERE f.is_deleted = FALSE 
       AND f.date_filed >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
   `;
@@ -110,7 +116,33 @@ export async function getMonthlyCrimeTrends(stationId = null) {
   }
   sql += ` GROUP BY DATE_FORMAT(f.date_filed, '%Y-%m') ORDER BY month ASC;`;
 
-  return await query(sql, params);
+  const rows = await query(sql, params);
+
+  // Guarantee complete 12-month continuum up to current month
+  const monthMap = new Map();
+  rows.forEach((r) => {
+    monthMap.set(r.month, {
+      month: r.month,
+      incident_count: Number(r.incident_count) || 0,
+      closed_count: Number(r.closed_count) || 0,
+    });
+  });
+
+  const now = new Date();
+  const full12Months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    full12Months.push(
+      monthMap.get(mStr) || {
+        month: mStr,
+        incident_count: 0,
+        closed_count: 0,
+      }
+    );
+  }
+
+  return full12Months;
 }
 
 /**
@@ -141,7 +173,7 @@ export async function getOfficerPerformance(stationId = null) {
     sql += ` AND o.station_id = ?`;
     params.push(stationId);
   }
-  sql += ` GROUP BY o.id ORDER BY total_assigned_cases DESC, closure_rate_percent DESC;`;
+  sql += ` GROUP BY o.id ORDER BY closure_rate_percent DESC, closed_cases DESC, total_assigned_cases DESC;`;
 
   return await query(sql, params);
 }

@@ -80,7 +80,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       to: '/officers',
       label: 'Police Officers',
       icon: Shield,
-      roles: ['System-Admin', 'Head-Officer', 'Officer', 'Evidence-Manager'],
+      roles: ['System-Admin', 'Head-Officer'],
     },
     {
       to: '/audit',

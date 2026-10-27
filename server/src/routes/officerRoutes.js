@@ -10,8 +10,8 @@ router.use(authenticateToken);
 router.get('/', getAllOfficers);
 router.get('/:id', getOfficerById);
 
-// Officer administrative routes
-router.post('/', authorizeRoles(ROLES.SYSTEM_ADMIN, ROLES.HEAD_OFFICER, ROLES.OFFICER), createOfficer);
+// Officer administrative routes - restricted strictly by rank and role clearance
+router.post('/', authorizeRoles(ROLES.SYSTEM_ADMIN, ROLES.HEAD_OFFICER), createOfficer);
 router.put('/:id', authorizeRoles(ROLES.SYSTEM_ADMIN, ROLES.HEAD_OFFICER), updateOfficer);
 router.delete('/:id', authorizeRoles(ROLES.SYSTEM_ADMIN), deleteOfficer);
 

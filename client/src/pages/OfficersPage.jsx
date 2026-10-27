@@ -44,10 +44,15 @@ export default function OfficersPage() {
   const [revealedPasswords, setRevealedPasswords] = useState({});
   const [copiedId, setCopiedId] = useState(null);
 
-  // Sync with global context whenever it updates
+  // Sync with global context whenever it updates without discarding locally added/commissioned officers
   useEffect(() => {
     if (globalOfficers && globalOfficers.length > 0) {
-      setOfficers(globalOfficers);
+      setOfficers((prev) => {
+        const uniquePrev = prev.filter(
+          (p) => !globalOfficers.some((g) => g.id === p.id || g.badge_number === p.badge_number)
+        );
+        return [...uniquePrev, ...globalOfficers];
+      });
     }
   }, [globalOfficers]);
 
@@ -57,7 +62,12 @@ export default function OfficersPage() {
       const queryParam = selectedStation !== 'all' ? `?station_id=${selectedStation}` : '';
       const res = await api.get(`/officers${queryParam}`);
       if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-        setOfficers(res.data);
+        setOfficers((prev) => {
+          const uniquePrev = prev.filter(
+            (p) => !res.data.some((d) => d.id === p.id || d.badge_number === p.badge_number)
+          );
+          return [...uniquePrev, ...res.data];
+        });
       }
     } catch (_) {
       // Retain current officers state
@@ -69,10 +79,21 @@ export default function OfficersPage() {
   }, [selectedStation, user?.id]);
 
   const handleOfficerCreated = (newOfficer) => {
-    setOfficers((prev) => [newOfficer, ...prev]);
+    // Reset filters to 'all' so that the newly commissioned officer is immediately visible in the active view
+    setSelectedStation('all');
+    setRoleFilter('all');
+    setSearchTerm('');
+    setActiveTab('roster');
+    setOfficers((prev) => [
+      newOfficer,
+      ...prev.filter((o) => o.id !== newOfficer.id && o.badge_number !== newOfficer.badge_number),
+    ]);
     if (addOfficerToState) addOfficerToState(newOfficer);
     if (refreshGlobalOfficers) refreshGlobalOfficers();
-    setToastMessage(`Officer ${newOfficer.rank_title} ${newOfficer.first_name} ${newOfficer.last_name} commissioned successfully. Credentials added to Handover Ledger.`);
+    setToastMessage({
+      type: 'success',
+      text: `Officer ${newOfficer.rank_title} ${newOfficer.first_name} ${newOfficer.last_name} (${newOfficer.badge_number}) commissioned successfully into the roster.`,
+    });
     setTimeout(() => setToastMessage(null), 6000);
   };
 

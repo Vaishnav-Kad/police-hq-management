@@ -28,13 +28,71 @@ export const pool = mysql.createPool({
   decimalNumbers: true, // returns DECIMAL as numbers or precise values where appropriate
 });
 
-// Ring buffer of last 200 SQL queries for live inspection
+// Ring buffer of last 500 SQL queries for live inspection
 const sqlLogBuffer = [];
+
+// Populate sqlLogBuffer from persistent disk log on startup so recent operations survive restarts
+function loadInitialQueriesFromDisk() {
+  try {
+    if (!fs.existsSync(sqlLogPath)) return;
+    const content = fs.readFileSync(sqlLogPath, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const recent = lines.slice(-300);
+    const regex = /^\[(.*?)\]\s+\[(.*?)\]\s+\((\d+)ms\)\s+(.*?)(?:\s+\|\s+Params:\s+(.*?))?(?:\s+\[ERROR:\s*(.*?)\])?$/;
+
+    for (let i = recent.length - 1; i >= 0; i--) {
+      const line = recent[i].trim();
+      const match = line.match(regex);
+      if (match) {
+        let params = [];
+        if (match[5]) {
+          try {
+            params = JSON.parse(match[5]);
+          } catch (_) {
+            params = [match[5]];
+          }
+        }
+        let type = match[2];
+        const cleanSql = match[4];
+        if (cleanSql.toUpperCase().includes('IS_DELETED = TRUE') || cleanSql.toUpperCase().includes('IS_DELETED=TRUE')) {
+          type = 'DELETE';
+        }
+        // Exclude repetitive internal token auth checks
+        if (!cleanSql.includes('FROM Police_Officers o JOIN Police_Stations s ON o.station_id = s.id WHERE o.id =')) {
+          sqlLogBuffer.push({
+            id: Date.now() + Math.random(),
+            timestamp: match[1],
+            type,
+            sql: cleanSql,
+            params,
+            durationMs: parseInt(match[3], 10),
+            error: match[6] || null,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[SQL Logger] Failed to load previous queries from disk:', err.message);
+  }
+}
+
+loadInitialQueriesFromDisk();
 
 function recordQuery(sql, params, durationMs, error = null) {
   if (!sql) return;
   const cleanSql = String(sql).replace(/\s+/g, ' ').trim();
-  const firstWord = cleanSql.split(' ')[0].toUpperCase();
+
+  // Exclude repetitive internal token authentication check from polling flooding the inspector
+  if (cleanSql.includes('FROM Police_Officers o JOIN Police_Stations s ON o.station_id = s.id WHERE o.id =')) {
+    return;
+  }
+
+  let firstWord = cleanSql.split(' ')[0].toUpperCase();
+  // Tag soft-deletes as DELETE so they appear under the DELETE filter in SQL inspector
+  if (firstWord === 'UPDATE' && (cleanSql.toUpperCase().includes('IS_DELETED = TRUE') || cleanSql.toUpperCase().includes('IS_DELETED=TRUE'))) {
+    firstWord = 'DELETE';
+  }
+
   const logEntry = {
     id: Date.now() + Math.random(),
     timestamp: new Date().toISOString(),
@@ -46,7 +104,7 @@ function recordQuery(sql, params, durationMs, error = null) {
   };
 
   sqlLogBuffer.unshift(logEntry);
-  if (sqlLogBuffer.length > 200) {
+  if (sqlLogBuffer.length > 500) {
     sqlLogBuffer.pop();
   }
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, AlertCircle, CheckCircle2, Copy, Check, Lock, Building2, User } from 'lucide-react';
+import { Shield, AlertCircle, CheckCircle2, Copy, Check, Lock, Building2, User, RefreshCw } from 'lucide-react';
 
 const RANKS = [
   'Director General of Police (DGP)',
@@ -57,10 +57,15 @@ export default function NewOfficerModal({ isOpen, onClose, onOfficerCreated }) {
   const [copied, setCopied] = useState(false);
 
   // Auto-generate suggested badge number
+  const generateNewBadge = () => {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    setBadgeNumber(`MH-MUM-${randomSuffix}`);
+    setError('');
+  };
+
   useEffect(() => {
     if (isOpen && !createdReceipt) {
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      setBadgeNumber(`MH-MUM-${randomSuffix}`);
+      generateNewBadge();
       if (user?.role !== 'System-Admin') {
         setStationId(user?.station_id || 1);
       }
@@ -124,7 +129,12 @@ export default function NewOfficerModal({ isOpen, onClose, onOfficerCreated }) {
 
       setCreatedReceipt(created);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Failed to commission officer.');
+      const errMsg =
+        err?.message ||
+        err?.error?.message ||
+        err?.response?.data?.message ||
+        'Failed to commission officer.';
+      setError(errMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -213,9 +223,20 @@ export default function NewOfficerModal({ isOpen, onClose, onOfficerCreated }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                Badge Number (Officer Login ID) *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-300 font-semibold">
+                  Badge Number (Officer Login ID) *
+                </label>
+                <button
+                  type="button"
+                  onClick={generateNewBadge}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center space-x-1 transition"
+                  title="Generate unique badge"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Generate New</span>
+                </button>
+              </div>
               <input
                 type="text"
                 required

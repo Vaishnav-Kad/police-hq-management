@@ -295,10 +295,9 @@ npm run build
 
 ---
 
-## 8. Academic Documentation & Viva Voce Guide
+## 8. Academic Documentation
 
 - **[Master Data Dictionary](file:///c:/Users/vaish/.gemini/antigravity/scratch/police-hq-management/docs/data-dictionary.md):** Complete column specifications, datatypes, default values, nullability, and foreign key constraints for all 15 tables.
-- **[Academic Viva Voce Defense Guide](file:///c:/Users/vaish/.gemini/antigravity/scratch/police-hq-management/docs/viva-presentation-guide.md):** In-depth mathematical normalization proofs (1NF $\to$ BCNF), InnoDB storage engine mechanics, transaction isolation, trigger error signaling, and **25 DBMS professor viva questions and model answers**.
 - **[Requirements Traceability Matrix](file:///c:/Users/vaish/.gemini/antigravity/scratch/police-hq-management/docs/requirements-matrix.md):** Functional requirement mapping across all 12 project phases.
 
 ---

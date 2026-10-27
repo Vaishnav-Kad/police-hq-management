@@ -408,6 +408,196 @@ JOIN Police_Stations s ON f.station_id = s.id
 LEFT JOIN Police_Officers o ON c.assigned_officer_id = o.id
 WHERE c.is_deleted = FALSE;
 
+-- ------------------------------------------------------------------------------
+-- View: vw_precinct_custody_overview
+-- Enforces Section 57 CrPC 24-hr magistrate production monitoring
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE VIEW vw_precinct_custody_overview AS
+SELECT 
+    a.id AS arrest_id,
+    a.arrest_number,
+    a.case_id,
+    c.case_number,
+    a.station_id,
+    s.name AS station_name,
+    a.holding_cell_number,
+    COALESCE(a.arrestee_name, CONCAT(cr.first_name, ' ', cr.last_name)) AS detainee_name,
+    a.custody_type,
+    a.booking_timestamp,
+    a.magistrate_production_deadline,
+    TIMESTAMPDIFF(HOUR, NOW(), a.magistrate_production_deadline) AS hours_until_production_deadline,
+    a.medical_exam_status,
+    a.bail_status,
+    CONCAT(o.first_name, ' ', o.last_name) AS arresting_officer_name,
+    o.badge_number AS arresting_officer_badge
+FROM Arrests_And_Custody a
+JOIN Cases c ON a.case_id = c.id
+JOIN Criminals cr ON a.suspect_id = cr.id
+JOIN Police_Stations s ON a.station_id = s.id
+JOIN Police_Officers o ON a.arresting_officer_id = o.id;
+
+-- ------------------------------------------------------------------------------
+-- View: vw_evidence_vault_ledger
+-- Malkhana Vault ledger tracking storage bin, custody officer, and parent case
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE VIEW vw_evidence_vault_ledger AS
+SELECT 
+    e.id AS evidence_id,
+    e.evidence_number,
+    e.description,
+    e.evidence_type,
+    e.storage_location,
+    e.locker_bin_number,
+    e.chain_of_custody_status,
+    e.seizure_memo_number,
+    e.witness_name,
+    e.file_hash,
+    c.case_number,
+    s.id AS station_id,
+    s.name AS station_name,
+    s.evidence_vault_location,
+    CONCAT(o.first_name, ' ', o.last_name) AS logged_by_officer_name,
+    o.badge_number AS logged_by_officer_badge,
+    custodian.id AS current_custodian_id,
+    CONCAT(custodian.first_name, ' ', custodian.last_name) AS current_custodian_name
+FROM Evidences e
+JOIN Cases c ON e.case_id = c.id
+JOIN FIR f ON c.fir_id = f.id
+JOIN Police_Stations s ON COALESCE(e.station_id, f.station_id) = s.id
+JOIN Police_Officers o ON e.logged_by_officer_id = o.id
+LEFT JOIN (
+    SELECT ecc1.evidence_id, ecc1.transferred_to_officer_id
+    FROM Evidence_Chain_Of_Custody ecc1
+    INNER JOIN (
+        SELECT evidence_id, MAX(id) AS max_id
+        FROM Evidence_Chain_Of_Custody
+        GROUP BY evidence_id
+    ) ecc2 ON ecc1.id = ecc2.max_id
+) latest_custody ON e.id = latest_custody.evidence_id
+LEFT JOIN Police_Officers custodian ON latest_custody.transferred_to_officer_id = custodian.id
+WHERE e.is_deleted = FALSE;
+
+-- ==============================================================================
+-- STORED PROCEDURES
+-- ==============================================================================
+DELIMITER $$
+
+-- ------------------------------------------------------------------------------
+-- Procedure: sp_convert_fir_to_case
+-- Promotes FIR into official Case with sequential CASE-YYYY-XXX numbering & audit
+-- ------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS sp_convert_fir_to_case$$
+CREATE PROCEDURE sp_convert_fir_to_case(
+    IN p_fir_id INT,
+    IN p_assigned_officer_id INT,
+    IN p_priority VARCHAR(20),
+    OUT p_case_id INT,
+    OUT p_case_number VARCHAR(50)
+)
+proc_label: BEGIN
+    DECLARE v_fir_count INT;
+    DECLARE v_existing_case_count INT;
+    DECLARE v_current_year INT;
+    DECLARE v_seq INT;
+    DECLARE v_case_no VARCHAR(50);
+    DECLARE v_new_id INT;
+
+    -- Validate FIR
+    SELECT COUNT(*) INTO v_fir_count FROM FIR WHERE id = p_fir_id AND is_deleted = FALSE;
+    IF v_fir_count = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: FIR not found or marked deleted';
+    END IF;
+
+    -- Prevent duplicate
+    SELECT COUNT(*) INTO v_existing_case_count FROM Cases WHERE fir_id = p_fir_id AND is_deleted = FALSE;
+    IF v_existing_case_count > 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: An active case is already registered for this FIR';
+    END IF;
+
+    SET v_current_year = YEAR(CURDATE());
+    SELECT COUNT(*) + 1 INTO v_seq FROM Cases WHERE YEAR(created_at) = v_current_year;
+    SET v_case_no = CONCAT('CASE-', v_current_year, '-', LPAD(v_seq, 3, '0'));
+
+    INSERT INTO Cases (case_number, fir_id, assigned_officer_id, case_status, priority, open_date)
+    VALUES (v_case_no, p_fir_id, p_assigned_officer_id, 'Under Investigation', COALESCE(p_priority, 'Medium'), CURDATE());
+
+    SET v_new_id = LAST_INSERT_ID();
+    SET p_case_id = v_new_id;
+    SET p_case_number = v_case_no;
+
+    UPDATE FIR SET status = 'Active' WHERE id = p_fir_id;
+
+    INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+    VALUES (p_assigned_officer_id, 'FIR_TO_CASE_CONVERSION', 'Cases', v_new_id, CONCAT('Generated ', v_case_no, ' from FIR #', p_fir_id));
+END$$
+
+-- ------------------------------------------------------------------------------
+-- Procedure: sp_transfer_evidence_custody
+-- Enforces custody chain log, updates storage location, and syncs status
+-- ------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS sp_transfer_evidence_custody$$
+CREATE PROCEDURE sp_transfer_evidence_custody(
+    IN p_evidence_id INT,
+    IN p_from_officer_id INT,
+    IN p_to_officer_id INT,
+    IN p_purpose VARCHAR(255),
+    IN p_new_location VARCHAR(255)
+)
+BEGIN
+    DECLARE v_evidence_count INT;
+
+    SELECT COUNT(*) INTO v_evidence_count FROM Evidences WHERE id = p_evidence_id AND is_deleted = FALSE;
+    IF v_evidence_count = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error: Evidence item not found or marked deleted';
+    END IF;
+
+    INSERT INTO Evidence_Chain_Of_Custody (evidence_id, transferred_from_officer_id, transferred_to_officer_id, purpose, custody_location)
+    VALUES (p_evidence_id, p_from_officer_id, p_to_officer_id, p_purpose, p_new_location);
+
+    UPDATE Evidences 
+    SET storage_location = p_new_location,
+        chain_of_custody_status = CASE 
+            WHEN p_purpose LIKE '%Court%' THEN 'Produced in Court'
+            WHEN p_purpose LIKE '%FSL%' OR p_purpose LIKE '%Forensic%' THEN 'Dispatched to FSL'
+            ELSE 'In Malkhana Vault'
+        END
+    WHERE id = p_evidence_id;
+
+    INSERT INTO Audit_Logs (officer_id, action, target_table, record_id, details)
+    VALUES (p_from_officer_id, 'EVIDENCE_CUSTODY_TRANSFER', 'Evidences', p_evidence_id, 
+            CONCAT('Transferred from Officer #', p_from_officer_id, ' to Officer #', p_to_officer_id, ' (Loc: ', p_new_location, ')'));
+END$$
+
+-- ------------------------------------------------------------------------------
+-- Procedure: sp_get_precinct_crime_stats
+-- Aggregates station-level crime, custody, and evidence metrics
+-- ------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS sp_get_precinct_crime_stats$$
+CREATE PROCEDURE sp_get_precinct_crime_stats(
+    IN p_station_id INT
+)
+BEGIN
+    SELECT 
+        s.id AS station_id,
+        s.name AS station_name,
+        s.station_code,
+        s.lockup_capacity,
+        s.evidence_vault_capacity,
+        COUNT(DISTINCT f.id) AS total_firs_registered,
+        COUNT(DISTINCT CASE WHEN c.case_status = 'Under Investigation' THEN c.id END) AS active_investigations,
+        COUNT(DISTINCT CASE WHEN c.case_status = 'In Court' THEN c.id END) AS cases_in_trial,
+        COUNT(DISTINCT CASE WHEN c.case_status = 'Closed' THEN c.id END) AS cases_solved,
+        COUNT(DISTINCT CASE WHEN a.release_timestamp IS NULL THEN a.id END) AS current_lockup_detainees,
+        COUNT(DISTINCT e.id) AS malkhana_evidence_count
+    FROM Police_Stations s
+    LEFT JOIN FIR f ON s.id = f.station_id AND f.is_deleted = FALSE
+    LEFT JOIN Cases c ON f.id = c.fir_id AND c.is_deleted = FALSE
+    LEFT JOIN Arrests_And_Custody a ON s.id = a.station_id
+    LEFT JOIN Evidences e ON (s.id = e.station_id OR s.id = f.station_id) AND e.is_deleted = FALSE
+    WHERE s.id = p_station_id
+    GROUP BY s.id;
+END$$
+
 -- ==============================================================================
 -- TRIGGERS
 -- ==============================================================================
@@ -416,8 +606,6 @@ WHERE c.is_deleted = FALSE;
 -- Trigger: trg_prevent_evidence_delete
 -- Blocks hard deletion of evidence if associated case has status 'Closed'
 -- ------------------------------------------------------------------------------
-DELIMITER $$
-
 DROP TRIGGER IF EXISTS trg_prevent_evidence_delete$$
 CREATE TRIGGER trg_prevent_evidence_delete
 BEFORE DELETE ON Evidences
@@ -427,7 +615,7 @@ BEGIN
     SELECT case_status INTO v_status FROM Cases WHERE id = OLD.case_id;
     IF v_status = 'Closed' THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Integrity Violation: Cannot delete evidence associated with a closed case';
+        SET MESSAGE_TEXT = 'Integrity Violation: Cannot delete evidence associated with a closed case. Legal preservation period active.';
     END IF;
 END$$
 
@@ -459,6 +647,20 @@ BEGIN
                 '; Priority: ', OLD.priority, ' -> ', NEW.priority
             )
         );
+    END IF;
+END$$
+
+-- ------------------------------------------------------------------------------
+-- Trigger: trg_enforce_warrant_execution_date
+-- Automatically stamps execution date when warrant status transitions to 'Executed'
+-- ------------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS trg_enforce_warrant_execution_date$$
+CREATE TRIGGER trg_enforce_warrant_execution_date
+BEFORE UPDATE ON Warrants
+FOR EACH ROW
+BEGIN
+    IF NEW.status = 'Executed' AND (NEW.execution_date IS NULL) THEN
+        SET NEW.execution_date = CURDATE();
     END IF;
 END$$
 

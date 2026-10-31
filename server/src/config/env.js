@@ -17,6 +17,7 @@ export const env = {
     USER: process.env.DB_USER || 'root',
     PASSWORD: process.env.DB_PASSWORD || '',
     NAME: process.env.DB_NAME || 'police_hq_db',
+    SSL: process.env.DB_SSL === 'true' || Boolean(process.env.DB_HOST && (process.env.DB_HOST.includes('tidbcloud.com') || process.env.DB_HOST.includes('aivencloud.com'))),
   },
   JWT: {
     SECRET: process.env.JWT_SECRET || 'dev_jwt_secret_police_hq_2026',

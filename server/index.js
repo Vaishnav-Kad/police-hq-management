@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import app from './src/app.js';
 import { env } from './src/config/env.js';
 import { initBackgroundCronJobs } from './src/services/cronService.js';
+import { ensureDatabaseInitialized } from './src/services/dbInitService.js';
 
 const server = http.createServer(app);
 
@@ -84,4 +85,7 @@ server.listen(PORT, () => {
   console.log(` Environment: ${env.NODE_ENV}`);
   console.log(` Storage Path: ${env.STORAGE_PATH}`);
   console.log(`====================================================`);
+  
+  // Auto-verify & initialize cloud tables if not yet created
+  ensureDatabaseInitialized().catch((e) => console.warn('[Auto-Init Warning]:', e.message));
 });

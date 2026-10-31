@@ -126,7 +126,7 @@ export default function LoginPage() {
           {error && (
             <div className="p-3 bg-red-950/60 border border-red-800/80 rounded-lg text-xs text-red-400 flex items-center space-x-2 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+              <span>{typeof error === 'string' ? error : error?.message || 'Authentication error.'}</span>
             </div>
           )}
 

@@ -316,11 +316,22 @@ export function AuthProvider({ children }) {
       }
       return { success: false, message: res?.message || 'Invalid badge number or password.' };
     } catch (err) {
-      const errMsg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        'Authentication failed: Invalid credentials or network error.';
+      let errMsg = 'Authentication failed: Invalid credentials or database connection error.';
+      if (typeof err === 'string') {
+        errMsg = err;
+      } else if (err.error?.message && typeof err.error.message === 'string') {
+        errMsg = err.error.message;
+      } else if (err.response?.data?.error?.message && typeof err.response.data.error.message === 'string') {
+        errMsg = err.response.data.error.message;
+      } else if (err.response?.data?.message && typeof err.response.data.message === 'string') {
+        errMsg = err.response.data.message;
+      } else if (err.message && typeof err.message === 'string') {
+        errMsg = err.message;
+      } else if (err.error && typeof err.error === 'string') {
+        errMsg = err.error;
+      } else if (typeof err.response?.data?.error === 'string') {
+        errMsg = err.response.data.error;
+      }
       return { success: false, message: errMsg };
     } finally {
       setLoading(false);

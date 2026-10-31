@@ -8,6 +8,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorMiddleware.js';
 import { successResponse } from './utils/responseHelper.js';
 
 import apiRouter from './routes/index.js';
+import { executeInitialization } from './services/dbInitService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +40,16 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: env.NODE_ENV
   }, 'Service healthy');
+});
+
+// Database Auto-Initialization Gateway for Cloud Setup
+app.get('/api/setup-database', async (req, res) => {
+  try {
+    const result = await executeInitialization();
+    return successResponse(res, result, 'Database initialized successfully', 200);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Serve Mugshots statically for image display (controlled)

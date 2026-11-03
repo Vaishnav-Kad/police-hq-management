@@ -525,7 +525,11 @@ LEFT JOIN Police_Officers custodian ON latest_custody.transferred_to_officer_id 
 WHERE e.is_deleted = FALSE;
 
 -- ==============================================================================
--- STORED PROCEDURES
+-- STORED PROCEDURES (MySQL 8.0+ Only — DO NOT RUN IN TIDB CLOUD)
+-- NOTE FOR TIDB CLOUD USERS:
+-- TiDB Cloud does NOT support DELIMITER, Stored Procedures, Triggers, or Events.
+-- If using TiDB Cloud, run `database/tidb_schema.sql` (Tables + Views) instead.
+-- All procedural logic is natively implemented in Node.js backend services.
 -- ==============================================================================
 DELIMITER $$
 
